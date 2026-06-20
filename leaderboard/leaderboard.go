@@ -2,6 +2,7 @@ package leaderboard
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -53,14 +54,24 @@ func (lb *RedisLeaderboard) AddScore(ctx context.Context, playerID string, score
 // Add 1 to convert from 0-based index to 1-based rank
 // Return an error if the player does not exist (ZRevRank returns redis.Nil)
 func (lb *RedisLeaderboard) GetRank(ctx context.Context, playerID string) (int64, error) {
-	panic("not implemented")
+	rank, err := lb.Client.ZRevRank(ctx, "leaderboard:global", playerID).Result()
+	return rank + 1, err
 }
 
 // TODO: implement GetTopN
 // Hint: use ZRevRangeWithScores to get top N members in descending score order
 // Return an empty slice (not nil, not an error) when no results match
 func (lb *RedisLeaderboard) GetTopN(ctx context.Context, n int) ([]PlayerScore, error) {
-	panic("not implemented")
+	members, err := lb.Client.ZRevRangeWithScores(ctx, "leaderboard:global", 0, int64(n-1)).Result()
+	if err != nil {
+		return []PlayerScore{}, err
+	}
+
+	top := make([]PlayerScore, len(members))
+	for i, z := range members {
+		top[i] = PlayerScore{PlayerID: z.Member.(string), Score: z.Score}
+	}
+	return top, nil
 }
 
 // TODO: implement GetScoreRange
@@ -68,5 +79,17 @@ func (lb *RedisLeaderboard) GetTopN(ctx context.Context, n int) ([]PlayerScore, 
 // strconv.FormatFloat or fmt.Sprintf can convert float64 to the string Redis expects
 // Return an empty slice (not nil, not an error) when no results match
 func (lb *RedisLeaderboard) GetScoreRange(ctx context.Context, min, max float64) ([]PlayerScore, error) {
-	panic("not implemented")
+	members, err := lb.Client.ZRangeByScoreWithScores(ctx, "leaderboard:global", &redis.ZRangeBy{
+		Min: fmt.Sprintf("%g", min),
+		Max: fmt.Sprintf("%g", max),
+	}).Result()
+	if err != nil {
+		return []PlayerScore{}, err
+	}
+
+	result := make([]PlayerScore, len(members))
+	for i, z := range members {
+		result[i] = PlayerScore{PlayerID: z.Member.(string), Score: z.Score}
+	}
+	return result, nil
 }
